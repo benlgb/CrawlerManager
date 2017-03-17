@@ -18,8 +18,10 @@ class DataController(DataController):
 		classifications = ['news', 'business', 'tech', 'culture', 'opinion']
 		for classification in classifications:
 			input_queue.put_nowait(Request(
-				url = 'http://www.ibtimes.com.cn/archives/articles/categories/%s/' % classification,
+				url = 'http://www.ibtimes.com.cn/archives/articles/categories/%s/page1.htm' % classification,
 				success = self.news_list,
+				page = 1,
+				classification = classification,
 				data = {
 					'classification': classification,
 					'source_id': 10,
@@ -28,8 +30,10 @@ class DataController(DataController):
 			))
 	
 	def news_list(self, response, input_queue):
-		logging.info('[+] get news list: %s' % response.url)
+		response.count = response.get('count', 0) + 1
+		logging.info('[+] get %d news list: %s' % (response.count, response.url))
 		soup = BeautifulSoup(response.text)
+		count = 0
 		for news in soup('li', 'list-style'):
 			data = response.data.copy()
 			img = news.find('img')
@@ -45,10 +49,10 @@ class DataController(DataController):
 				success = self.news,
 				data = data
 			))
-		next_page = soup.find('li', 'pager-next')
-		if next_page:
-			next_page = next_page.find('a').get('href')
-			response.url = urljoin(response.url, next_page)
+			count += 1
+		if count > 0:
+			response.page += 1
+			response.url = 'http://www.ibtimes.com.cn/archives/articles/categories/%s/page%d.htm' % (response.classification, response.page)
 			input_queue.put_nowait(response)
 		
 	def news(self, response, input_queue):
