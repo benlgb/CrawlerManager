@@ -15,33 +15,54 @@ from src.DataController import DataController
 
 class DataController(DataController):
 	def start(self, input_queue):
-		classifications = ['news', 'business', 'tech', 'culture', 'opinion']
-		for classification in classifications:
+		classifications = [
+			('新闻', '2013-09-08-02-08-40'),
+			('副刊', '2013-09-09-13-07-36'),
+			('大声公', '2013-09-09-13-16-53'),
+			('评论', '2013-09-09-13-17-28'),
+			('生活的事', '2013-09-09-13-17-55')
+		]
+
+		for classification, model in classifications:
 			input_queue.put_nowait(Request(
-				url = 'http://www.ibtimes.com.cn/archives/articles/categories/%s/page1.htm' % classification,
-				success = self.news_list,
-				page = 1,
+				url = 'http://intimes.com.my/index.php/%s' % model,
 				classification = classification,
+				success = self.page_handle,
+				page = 1,
 				data = {
 					'classification': classification,
-					'source_id': 10,
+					'source_id': 28,
 					'language': 'chi'
 				}
 			))
-	
-	def news_list(self, response, input_queue):
-		response.count = response.get('count', 0) + 1
-		logging.info('[+] get %d news list: %s' % (response.count, response.url))
+
+	def page_handle(self, response, input_queue):
+		self.news_list(response, input_queue)
 		soup = BeautifulSoup(response.text)
-		count = 0
-		for news in soup('li', 'list-style'):
+		pages_text = soup.find('li', 'counter').text
+		match = re.search(r'Page \d+ of (\d+)', pages_text)
+		if match:
+			last_page = int(match.group(1))
+			for page in range(1, last_page * 14 / 10 + 1):
+				input_queue.put_nowait(Request(
+					url = '%s?start=%d' % (response.url, 10 * page),
+					classification = response.classification,
+					success = self.news_list,
+					page = page + 1,
+					data = response.data.copy()
+				))
+
+	def news_list(self, response, input_queue):
+		logging.info('[+] get %d news list: %s' % (response.page, response.url))
+		soup = BeautifulSoup(response.text)
+		for news in soup('div', 'itemContainer'):
 			data = response.data.copy()
 			img = news.find('img')
 			data.update({
 				'request_url': urljoin(response.url, news.find('a').get('href')),
-				'title': news.find('div', 'title').text,
-				'pub_time': news.find('div', 'timedate').text,
-				'abstract': news.find('div', 'summary').text,
+				'title': news.find('a').text,
+				'pub_time': news.find('time').get('datetime'),
+				'abstract': str(news.find('div', 'itemIntroText')),
 				'images': [img.get('src')] if img else []
 			})
 			input_queue.put_nowait(Request(
@@ -49,20 +70,17 @@ class DataController(DataController):
 				success = self.news,
 				data = data
 			))
-			count += 1
-		if count > 0:
-			response.page += 1
-			response.url = 'http://www.ibtimes.com.cn/archives/articles/categories/%s/page%d.htm' % (response.classification, response.page)
-			input_queue.put_nowait(response)
 		
 	def news(self, response, input_queue):
 		logging.info('[+] get news: %s' % response.url)
 		soup = BeautifulSoup(response.text)
+		body = soup.find('div', 'itemBody')
+		joom = body.find('div', id="joomsharebar")
+		if joom:
+			joom.decompose()
 		response.data.update({
 			'response_url': response.response.url,
-			'title': soup.find('div', 'title-header').find('div', 'title').text,
-			'pub_time': soup.find('p', 'timestamp').text,
-			'body': soup('div', 'enlarge-font'),
+			'body': str(body),
 			'cole_time': time.time(),
 			'out_links': soup('a')
 		})
@@ -86,7 +104,6 @@ class Statictis(object):
 		self.out_links()
 		self.body()
 		self.abstract()
-		self.title()
 		return self.data
 
 	def out_links(self):
@@ -98,8 +115,7 @@ class Statictis(object):
 		self.data['out_links'] = out_links
 
 	def body(self):
-		body = '\n'.join([str(body) for body in self.data['body']])
-		self.data['body'] = self.text_handle(body)
+		self.data['body'] = self.text_handle(self.data['body'])
 
 	def abstract(self):
 		self.data['abstract'] = self.text_handle(self.data['abstract'])
@@ -108,8 +124,8 @@ class Statictis(object):
 		self.data['title'] = self.text_handle(self.data['title'])
 
 	def pub_time(self):
-		matches = re.search(r'(\d{2,4}).(\d{1,2}).(\d{1,2}).*?(\d{1,2}):(\d{1,2})', self.data['pub_time'])
-		self.data['pub_time'] = '%s-%s-%s %s:%s:00' % matches.groups()
+		matches = re.search(r'(\d{2,4})-(\d{1,2})-(\d{1,2})T(\d{1,2}):(\d{1,2}):(\d{1,2})', self.data['pub_time'])
+		self.data['pub_time'] = '%s-%s-%s %s:%s:%s' % matches.groups()
 
 	def text_handle(self, string):
 		string = re.sub(r'<script( .*?|)>[\w\W]*?</script>', '', string)

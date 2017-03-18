@@ -9,6 +9,7 @@ from bin.MiddleWares import *
 MIDDLEWARES = (
 	# Proxies,
 	# Authentication,
+	RequestLimit,
 	StatusCodeCheck,
 	TimeoutCheck,
 	ConnectionError,

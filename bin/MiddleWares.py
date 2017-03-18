@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import time
 import gevent
 import logging
 import requests
@@ -13,7 +14,7 @@ HEADERS = {
 }
 
 # 超时时间
-TIMEOUT = 5
+TIMEOUT = 10
 
 # 最高重复请求数
 MAX_REPEAT_TIMES = 5
@@ -23,6 +24,9 @@ PROXIES = {
 	'http': 'http://127.0.0.1',
 	'https': 'https://127.0.0.1'
 }
+
+# 最短访问间隔
+LIMIT = 0.1
 
 # 身份认证
 APPS = [{
@@ -52,6 +56,19 @@ APPS = [{
 # 	def process(self, request, pid):
 # 		request.args.proxies = TIMEOUT
 # 		return request
+
+# 限制频繁访问机制
+class RequestLimit(MiddleWare.PreProcess):
+	limit = LIMIT
+
+	def process(self, request, pid):
+		limit = self.__class__.limit
+		self.request_time = getattr(self, 'request_time', 0)
+		current = time.time()
+		while current - self.request_time < limit:
+			gevent.sleep(limit)
+		self.request_time = time.time()
+		return request
 
 # Auth认证
 class Authentication(MiddleWare.PreProcess):
