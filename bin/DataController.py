@@ -27,8 +27,9 @@ class DataController(DataController):
 			input_queue.put_nowait(Request(
 				url = 'http://intimes.com.my/index.php/%s' % model,
 				classification = classification,
-				success = self.page_handle,
-				page = 1,
+				success = self.news_list,
+				model = model,
+				page = 0,
 				data = {
 					'classification': classification,
 					'source_id': 28,
@@ -36,25 +37,10 @@ class DataController(DataController):
 				}
 			))
 
-	def page_handle(self, response, input_queue):
-		self.news_list(response, input_queue)
-		soup = BeautifulSoup(response.text)
-		pages_text = soup.find('li', 'counter').text
-		match = re.search(r'Page \d+ of (\d+)', pages_text)
-		if match:
-			last_page = int(match.group(1))
-			for page in range(1, last_page * 14 / 10 + 1):
-				input_queue.put_nowait(Request(
-					url = '%s?start=%d' % (response.url, 10 * page),
-					classification = response.classification,
-					success = self.news_list,
-					page = page + 1,
-					data = response.data.copy()
-				))
-
 	def news_list(self, response, input_queue):
-		logging.info('[+] get %d news list: %s' % (response.page, response.url))
+		logging.info('[+] get %d news list: %s' % (response.page + 1, response.url))
 		soup = BeautifulSoup(response.text)
+		count = 0
 		for news in soup('div', 'itemContainer'):
 			data = response.data.copy()
 			img = news.find('img')
@@ -70,6 +56,12 @@ class DataController(DataController):
 				success = self.news,
 				data = data
 			))
+			count += 1
+		if count > 0:
+			model = response.model
+			page = response.page = response.page + 1
+			response.url = 'http://intimes.com.my/index.php/%s?start=%d' % (model, 10 * page)
+			input_queue.put_nowait(response)
 		
 	def news(self, response, input_queue):
 		logging.info('[+] get news: %s' % response.url)
@@ -90,7 +82,7 @@ class DataController(DataController):
 		self.count = getattr(self, 'count', 0) + 1
 		data = Statictis(data).filter()
 		data.news_id = self.count
-		path = 'data/%d.json' % self.count
+		path = 'data/28_chi/%d.json' % self.count
 		with open(path, 'w+') as f:
 			json.dump(data, f, indent=4)
 		logging.info('[+] save news: %d' % self.count)
