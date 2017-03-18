@@ -16,60 +16,54 @@ from src.DataController import DataController
 class DataController(DataController):
 	def start(self, input_queue):
 		classifications = [
-			('新闻', '2013-09-08-02-08-40'),
-			('副刊', '2013-09-09-13-07-36'),
-			('大声公', '2013-09-09-13-16-53'),
-			('评论', '2013-09-09-13-17-28'),
-			('生活的事', '2013-09-09-13-17-55')
+			('砂拉越', 3),
+			('沙巴', 8),
+			('西马', 11),
+			('汶莱', 10),
+			('国际', 12),
+			('体育', 13),
+			('娱乐', 15),
+			('科技', 14),
+			('健康', 23),
+			('新奇', 16),
+			('财经', 18),
+			('评论', 27),
+			('综合', 21)
 		]
 
 		for classification, model in classifications:
 			input_queue.put_nowait(Request(
-				url = 'http://intimes.com.my/index.php/%s' % model,
+				url = 'http://news.seehua.com/?cat=%d' % model,
 				classification = classification,
-				success = self.page_handle,
+				success = self.news_list,
+				model = model,
 				page = 1,
 				data = {
 					'classification': classification,
-					'source_id': 28,
+					'source_id': 31,
 					'language': 'chi'
 				}
 			))
 
-	def page_handle(self, response, input_queue):
-		self.news_list(response, input_queue)
-		soup = BeautifulSoup(response.text)
-		pages_text = soup.find('li', 'counter').text
-		match = re.search(r'Page \d+ of (\d+)', pages_text)
-		if match:
-			last_page = int(match.group(1))
-			for page in range(1, last_page * 14 / 10 + 1):
-				input_queue.put_nowait(Request(
-					url = '%s?start=%d' % (response.url, 10 * page),
-					classification = response.classification,
-					success = self.news_list,
-					page = page + 1,
-					data = response.data.copy()
-				))
-
 	def news_list(self, response, input_queue):
 		logging.info('[+] get %d news list: %s' % (response.page, response.url))
 		soup = BeautifulSoup(response.text)
-		for news in soup('div', 'itemContainer'):
+		for news in soup('article', 'item-list'):
 			data = response.data.copy()
-			img = news.find('img')
 			data.update({
 				'request_url': urljoin(response.url, news.find('a').get('href')),
 				'title': news.find('a').text,
 				'pub_time': news.find('time').get('datetime'),
 				'abstract': str(news.find('div', 'itemIntroText')),
-				'images': [img.get('src')] if img else []
 			})
 			input_queue.put_nowait(Request(
 				url = data['request_url'],
 				success = self.news,
 				data = data
 			))
+		response.page += 1
+		response.url = 'http://news.seehua.com/?cat=%s&paged=%d' % (response.model, response.page)
+		input_queue.put_nowait(response)
 		
 	def news(self, response, input_queue):
 		logging.info('[+] get news: %s' % response.url)
