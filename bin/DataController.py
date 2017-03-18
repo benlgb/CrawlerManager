@@ -10,7 +10,7 @@ import logging
 from urlparse import urljoin
 from src.Request import Request
 from HTMLParser import HTMLParser
-from BeautifulSoup import BeautifulSoup
+from bs4 import BeautifulSoup
 from src.DataController import DataController
 
 class DataController(DataController):
@@ -47,14 +47,14 @@ class DataController(DataController):
 
 	def news_list(self, response, input_queue):
 		logging.info('[+] get %d news list: %s' % (response.page, response.url))
-		soup = BeautifulSoup(response.text)
+		soup = BeautifulSoup(response.text, 'lxml')
 		for news in soup('article', 'item-list'):
 			data = response.data.copy()
 			data.update({
 				'request_url': urljoin(response.url, news.find('a').get('href')),
 				'title': news.find('a').text,
-				'pub_time': news.find('time').get('datetime'),
-				'abstract': str(news.find('div', 'itemIntroText')),
+				'pub_time': news.find('span', 'tie-date').text,
+				'abstract': news.find('div', 'entry').find('p').text,
 			})
 			input_queue.put_nowait(Request(
 				url = data['request_url'],
@@ -67,11 +67,14 @@ class DataController(DataController):
 		
 	def news(self, response, input_queue):
 		logging.info('[+] get news: %s' % response.url)
-		soup = BeautifulSoup(response.text)
-		body = soup.find('div', 'itemBody')
-		joom = body.find('div', id="joomsharebar")
-		if joom:
-			joom.decompose()
+		soup = BeautifulSoup(response.text, 'lxml')
+		body = soup.find('div', 'entry')
+		share = body.find('div', 'share-post')
+		comment = body.find('div', id="wpdevar_comment_1")
+		if share:
+			share.decompose()
+		if comment:
+			comment.decompose()
 		response.data.update({
 			'response_url': response.response.url,
 			'body': str(body),
@@ -84,7 +87,7 @@ class DataController(DataController):
 		self.count = getattr(self, 'count', 0) + 1
 		data = Statictis(data).filter()
 		data.news_id = self.count
-		path = 'data/%d.json' % self.count
+		path = 'data/31_chi/%d.json' % self.count
 		with open(path, 'w+') as f:
 			json.dump(data, f, indent=4)
 		logging.info('[+] save news: %d' % self.count)
@@ -97,7 +100,6 @@ class Statictis(object):
 		self.pub_time()
 		self.out_links()
 		self.body()
-		self.abstract()
 		return self.data
 
 	def out_links(self):
@@ -118,8 +120,8 @@ class Statictis(object):
 		self.data['title'] = self.text_handle(self.data['title'])
 
 	def pub_time(self):
-		matches = re.search(r'(\d{2,4})-(\d{1,2})-(\d{1,2})T(\d{1,2}):(\d{1,2}):(\d{1,2})', self.data['pub_time'])
-		self.data['pub_time'] = '%s-%s-%s %s:%s:%s' % matches.groups()
+		matches = re.search(u'(\d{2,4})年(\d{1,2})月(\d{1,2})日', self.data['pub_time'])
+		self.data['pub_time'] = '%s-%s-%s 00:00:00' % matches.groups()
 
 	def text_handle(self, string):
 		string = re.sub(r'<script( .*?|)>[\w\W]*?</script>', '', string)

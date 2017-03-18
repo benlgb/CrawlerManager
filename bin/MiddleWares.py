@@ -64,8 +64,7 @@ class RequestLimit(MiddleWare.PreProcess):
 	def process(self, request, pid):
 		limit = self.__class__.limit
 		self.request_time = getattr(self, 'request_time', 0)
-		current = time.time()
-		while current - self.request_time < limit:
+		while time.time() - self.request_time < limit:
 			gevent.sleep(limit)
 		self.request_time = time.time()
 		return request
