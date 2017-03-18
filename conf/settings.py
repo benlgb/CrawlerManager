@@ -9,7 +9,7 @@ from bin.MiddleWares import *
 MIDDLEWARES = (
 	# Proxies,
 	# Authentication,
-	# RequestLimit,
+	RequestLimit,
 	StatusCodeCheck,
 	TimeoutCheck,
 	ConnectionError,
