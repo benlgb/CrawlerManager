@@ -36,6 +36,7 @@ class DataController(DataController):
 				url = 'http://news.seehua.com/?cat=%d' % model,
 				classification = classification,
 				success = self.news_list,
+				error = self.error,
 				model = model,
 				page = 1,
 				data = {
@@ -45,9 +46,15 @@ class DataController(DataController):
 				}
 			))
 
+	def error(self, e, request, pid):
+		request.repeat_times = 0
+		gevent.sleep(5)
+		self.input_queue.put_nowait(request)
+
 	def news_list(self, response, input_queue):
 		logging.info('[+] get %d news list: %s' % (response.page, response.url))
 		soup = BeautifulSoup(response.text, 'lxml')
+		count = 0
 		for news in soup('article', 'item-list'):
 			data = response.data.copy()
 			data.update({
@@ -59,8 +66,12 @@ class DataController(DataController):
 			input_queue.put_nowait(Request(
 				url = data['request_url'],
 				success = self.news,
+				error = self.error,
 				data = data
 			))
+			count += 1
+		if count == 0:
+			return
 		response.page += 1
 		response.url = 'http://news.seehua.com/?cat=%s&paged=%d' % (response.model, response.page)
 		input_queue.put_nowait(response)

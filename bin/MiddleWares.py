@@ -26,7 +26,7 @@ PROXIES = {
 }
 
 # 最短访问间隔
-LIMIT = 0.1
+LIMIT = 0.25
 
 # 身份认证
 APPS = [{
